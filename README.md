@@ -143,7 +143,3 @@ whisper-vi-api/
 ## 9. Công nghệ sử dụng
 
 Python · PyTorch · Hugging Face Transformers · PEFT (LoRA) · Weights & Biases · FastAPI · Docker · librosa
-
----
-
-*Tác giả: Lam Minh Tran · [Kaggle](https://www.kaggle.com/lmminhtrn)*
