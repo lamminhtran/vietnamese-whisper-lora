@@ -5,6 +5,7 @@ Fine-tune mô hình **Whisper-small** của OpenAI cho tác vụ nhận dạng t
 > **Kết quả chính:** WER giảm từ **33.55% → 15.81%** (giảm 53%), CER giảm từ **21.92% → 8.20%** (giảm 63%) trên tập test 2.822 mẫu — chỉ huấn luyện 0.36% số tham số nhờ LoRA.
 
 > 📓 **Notebook huấn luyện (data prep + train + đánh giá):** [Kaggle — train-speedai-22th9](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9)
+> 🤗 **Model đã merge (trọng số):** [huggingface.co/lamminhtran/whisper-vi-lora](https://huggingface.co/lamminhtran/whisper-vi-lora)
 > Toàn bộ quá trình fine-tune được chạy trên Kaggle (2× Tesla T4). Repo này chứa phần **triển khai (serving)** của model đã merge.
 
 ---
@@ -80,9 +81,8 @@ Mô hình được merge adapter LoRA vào trọng số gốc (`merge_and_unload
 Trọng số model (~922MB) **không** được commit lên GitHub. Tải về thư mục `model/` trước khi chạy:
 
 ```bash
-# Thay <hf-username/repo> bằng repo model của bạn trên Hugging Face
 pip install huggingface_hub
-huggingface-cli download <hf-username/repo> --local-dir ./model
+hf download lamminhtran/whisper-vi-lora --local-dir ./model
 ```
 
 Thư mục `model/` sau khi tải cần có đủ: `config.json`, `generation_config.json`,
