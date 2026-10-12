@@ -1,0 +1,7 @@
+fastapi==0.115.0
+uvicorn[standard]==0.30.6
+transformers==5.19.0
+tokenizers==0.23.3
+librosa==0.10.2
+python-multipart==0.0.9
+soundfile==0.12.1

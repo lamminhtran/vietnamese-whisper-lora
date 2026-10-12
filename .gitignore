@@ -1,0 +1,23 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Model weights — KHÔNG commit (tải từ Hugging Face, xem model/README.md)
+model/*
+!model/README.md
+
+# OS / editor
+.DS_Store
+.vscode/
+.idea/
+
+# Logs & temp
+*.log
+*.wav
+*.mp3
