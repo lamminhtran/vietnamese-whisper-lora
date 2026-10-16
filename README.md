@@ -10,7 +10,7 @@ Repo này là phần **serving**: FastAPI + Docker cho model đã merge adapter.
 
 Test trên 2.822 mẫu. Chỉ huấn luyện 0.36% tham số (884.736 / 244M).
 
-**Liên kết:** [🤗 Model](https://huggingface.co/lamminhtran/whisper-vi-lora) · [📓 Notebook (Kaggle)](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9) · [🐙 Code](https://github.com/lamminhtran/vietnamese-whisper-lora)
+**Liên kết:** [🤗 Model](https://huggingface.co/lamminhtran/whisper-vi-lora) · [📓 Notebook (Kaggle)](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9)
 
 ---
 
