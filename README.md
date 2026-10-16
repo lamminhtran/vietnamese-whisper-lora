@@ -1,106 +1,36 @@
-# Vietnamese Speech Recognition — Fine-tuning Whisper with LoRA
+# Vietnamese Whisper (LoRA)
 
-Fine-tune mô hình **Whisper-small** của OpenAI cho tác vụ nhận dạng tiếng nói tiếng Việt (ASR), sử dụng kỹ thuật **LoRA** (Low-Rank Adaptation) trên bộ dữ liệu **VLSP2020-100h** của VinBigData. Dự án đi trọn chuỗi từ xử lý dữ liệu → huấn luyện → đánh giá → triển khai thành API phục vụ production.
+Nhận dạng tiếng nói tiếng Việt bằng `openai/whisper-small` fine-tune với LoRA trên VLSP2020-100h.
+Repo này là phần **serving**: FastAPI + Docker cho model đã merge adapter.
 
-> **Kết quả chính:** WER giảm từ **33.55% → 15.81%** (giảm 53%), CER giảm từ **21.92% → 8.20%** (giảm 63%) trên tập test 2.822 mẫu — chỉ huấn luyện 0.36% số tham số nhờ LoRA.
+| | WER | CER |
+|---|:---:|:---:|
+| whisper-small (baseline) | 33.55% | 21.92% |
+| **+ LoRA (model này)** | **15.81%** | **8.20%** |
 
-> 📓 **Notebook huấn luyện (data prep + train + đánh giá):** [Kaggle — train-speedai-22th9](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9)
-> 🤗 **Model đã merge (trọng số):** [huggingface.co/lamminhtran/whisper-vi-lora](https://huggingface.co/lamminhtran/whisper-vi-lora)
-> Toàn bộ quá trình fine-tune được chạy trên Kaggle (2× Tesla T4). Repo này chứa phần **triển khai (serving)** của model đã merge.
+Test trên 2.822 mẫu. Chỉ huấn luyện 0.36% tham số (884.736 / 244M).
+
+**Liên kết:** [🤗 Model](https://huggingface.co/lamminhtran/whisper-vi-lora) · [📓 Notebook (Kaggle)](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9) · [🐙 Code](https://github.com/lamminhtran/vietnamese-whisper-lora)
 
 ---
 
-## 1. Tổng quan
+## Quick start
 
-| Hạng mục | Chi tiết |
-|---|---|
-| Bài toán | Automatic Speech Recognition (ASR) tiếng Việt |
-| Mô hình nền | `openai/whisper-small` (244M tham số) |
-| Kỹ thuật fine-tune | LoRA (r=8, α=16) trên các lớp `q_proj`, `v_proj` |
-| Augmentation | SpecAugment |
-| Dữ liệu | VLSP2020-100h (VinBigData) — 56.427 mẫu, ~100 giờ |
-| Phần cứng huấn luyện | Kaggle, 2× Tesla T4 (16GB) |
-| Triển khai | FastAPI + Docker |
-
-## 2. Dữ liệu
-
-- **Nguồn:** VLSP2020-100h ASR challenge dataset của VinBigData (VinGroup), công bố công khai cho cộng đồng tại hội thảo VLSP 2020. Lấy qua bản mirror Parquet trên Hugging Face (`doof-ferb/vlsp2020_vinai_100h`), gốc từ VinBigData. License: CC-BY-4.0.
-- **Tiền xử lý:** chuẩn hóa audio về 16kHz mono; tự chia train/validation/test theo tỉ lệ 90/5/5 với seed cố định (42) để đảm bảo tái lập và tránh data leakage.
-- **Thống kê sau chia:** Train 50.784 — Validation 2.821 — Test 2.822 mẫu.
-
-## 3. Phương pháp
-
-**Vì sao LoRA:** thay vì cập nhật toàn bộ 244M tham số (tốn VRAM, dễ catastrophic forgetting), LoRA đóng băng trọng số gốc và chỉ huấn luyện các ma trận rank thấp chèn vào lớp attention — chỉ **884.736 tham số (0.36%)**. Checkpoint nhẹ ~vài MB, giữ được kiến thức đa ngôn ngữ gốc của Whisper.
-
-**Cấu hình huấn luyện chính:**
-- LoRA: r=8, alpha=16, dropout=0.05, target=[`q_proj`, `v_proj`]
-- Learning rate 5e-4, warmup 100 steps, 2 epochs
-- Batch hiệu quả 16 (batch 8 × gradient accumulation 2)
-- fp16 mixed precision, gradient checkpointing (tối ưu VRAM)
-- SpecAugment (che ngẫu nhiên dải tần/thời gian trên spectrogram)
-- Early stopping theo validation WER (patience=3)
-
-**Đánh giá:** WER (Word Error Rate) và CER (Character Error Rate) — CER đặc biệt quan trọng với tiếng Việt do hệ thống 6 thanh điệu và dấu phụ.
-
-## 4. Kết quả
-
-| Mô hình | WER | CER |
-|---|---|---|
-| Whisper-small (baseline, chưa fine-tune) | 33.55% | 21.92% |
-| **Whisper-small + LoRA (fine-tuned)** | **15.81%** | **8.20%** |
-| **Cải thiện tuyệt đối** | **−17.74** | **−13.72** |
-
-Kết quả validation (~15% WER) khớp với kết quả test (15.81%), cho thấy mô hình **không overfit** — huấn luyện ổn định.
-
-## 5. Phân tích lỗi (Error Analysis)
-
-So sánh output baseline và model fine-tune cho thấy 3 nhóm cải thiện rõ rệt:
-
-**(a) Chuẩn hóa số thành chữ** — model học được quy ước viết số bằng chữ của domain:
-- `"2019"` → `"hai nghìn không trăm mười chín"` ✓
-- `"940 phút"` → `"chín giờ bốn mươi phút"` ✓
-
-**(b) Sửa dấu thanh điệu & âm vị** (nguyên nhân chính giảm CER):
-- `"ờ sao lại thế"` → `"ơ sao lại thế"` ✓
-- `"cô hồi"` → `"cơ hội"` ✓
-- `"toàn phủ hủy"` → `"thành phố huế"` ✓
-
-**(c) Từ vay mượn / phiên âm:**
-- `"festival"` → `"phét ti van"` ✓ (đúng phong cách phiên âm của dataset)
-
-**Ví dụ tiêu biểu** (câu dài nhiều số và tên riêng): WER baseline 47% → fine-tuned **5%**.
-
-**Hạn chế (Limitations):** với audio khó (phương ngữ, ca dao như "thằng bờm") hoặc từ hiếm/tên riêng, cả hai model vẫn sai nhiều — model fine-tune có cải thiện nhưng chưa giải quyết triệt để.
-
-## 6. Triển khai (Deployment)
-
-Mô hình được merge adapter LoRA vào trọng số gốc (`merge_and_unload`) thành một model Whisper hoàn chỉnh, rồi phục vụ qua **FastAPI** và đóng gói **Docker**.
-
-### 6.1. Tải model
-
-Trọng số model (~922MB) **không** được commit lên GitHub. Tải về thư mục `model/` trước khi chạy:
+Trọng số model (~922MB) không nằm trong repo — tải từ Hugging Face trước:
 
 ```bash
 pip install huggingface_hub
 hf download lamminhtran/whisper-vi-lora --local-dir ./model
 ```
 
-Thư mục `model/` sau khi tải cần có đủ: `config.json`, `generation_config.json`,
-`model.safetensors`, `preprocessor_config.json`, `processor_config.json`,
-`tokenizer.json`, `tokenizer_config.json`. Chi tiết xem [model/README.md](model/README.md).
-
-### 6.2. Chạy bằng Docker (khuyến nghị)
+**Docker (khuyến nghị):**
 
 ```bash
 docker build -t whisper-vi-api .
 docker run -d --name whisper-vi --restart unless-stopped -p 8000:8000 whisper-vi-api
-
-# Giao diện test tự sinh: http://localhost:8000/docs
-# Hoặc gọi trực tiếp:
-curl -X POST "http://localhost:8000/transcribe" -F "file=@audio.mp3"
 ```
 
-### 6.3. Chạy local (không Docker)
+**Local:**
 
 ```bash
 python -m venv venv && source venv/bin/activate
@@ -109,37 +39,90 @@ pip install -r requirements.txt
 uvicorn app:app --host 0.0.0.0 --port 8000
 ```
 
-API trả về JSON gồm `transcription`, `latency_seconds`, `audio_duration_seconds`, `device`.
-Endpoint `GET /health` dùng cho health check. Định dạng audio hỗ trợ: `.wav .mp3 .flac .m4a .ogg`.
+> Yêu cầu: Python 3.10–3.12, `torch>=2.6` (bắt buộc cho `transformers` 5.x), `ffmpeg` (Docker đã có sẵn).
 
-> **Lưu ý môi trường:** cần Python 3.10–3.12, `torch>=2.6` (bắt buộc cho `transformers` 5.x),
-> và `ffmpeg` để decode mp3/m4a (Docker image đã cài sẵn).
+## API
 
-## 7. Hướng phát triển (Future work)
+| Method | Endpoint | Mô tả |
+|---|---|---|
+| `GET` | `/health` | Health check |
+| `POST` | `/transcribe` | Upload audio → transcript |
+| `GET` | `/docs` | Swagger UI để test |
 
-- Kết hợp **Language Model (KenLM/n-gram)** khi decode để sửa lỗi ngữ pháp/từ vựng.
-- **Beam search** thay greedy decoding để giảm WER.
-- Fine-tune tiếp từ **PhoWhisper** (model Vietnamese ASR SOTA) thay vì Whisper gốc.
-- Tối ưu inference cho production: **ONNX / quantization / GPU serving** (hiện chạy CPU, ~3–15s/file 10s).
-- Ablation study về LoRA rank (r=8 vs 16 vs 32) và target modules.
+```bash
+curl -X POST http://localhost:8000/transcribe -F "file=@audio.mp3"
+```
 
-## 8. Cấu trúc thư mục
+```json
+{
+  "transcription": "...",
+  "latency_seconds": 3.24,
+  "audio_duration_seconds": 2.0,
+  "device": "cpu"
+}
+```
+
+Audio hỗ trợ: `.wav .mp3 .flac .m4a .ogg` (tự resample về 16kHz mono).
+
+## Dữ liệu
+
+- **VLSP2020-100h** (VinBigData) — ~100 giờ, 56.427 mẫu. Mirror Parquet: [`doof-ferb/vlsp2020_vinai_100h`](https://huggingface.co/datasets/doof-ferb/vlsp2020_vinai_100h). License CC-BY-4.0.
+- Chia train/val/test 90/5/5 (seed 42) → 50.784 / 2.821 / 2.822 mẫu.
+- Audio chuẩn hóa 16kHz mono.
+
+## Huấn luyện
+
+LoRA đóng băng trọng số gốc, chỉ train các ma trận rank thấp chèn vào lớp attention — giữ được
+kiến thức đa ngôn ngữ của Whisper, checkpoint adapter chỉ vài MB.
+
+| | |
+|---|---|
+| Base | `openai/whisper-small` (244M) |
+| LoRA | r=8, α=16, dropout=0.05, target `q_proj` / `v_proj` |
+| Optimizer | lr 5e-4, warmup 100 steps, 2 epochs |
+| Batch | 16 hiệu quả (8 × grad accum 2) |
+| Khác | fp16, gradient checkpointing, SpecAugment, early stopping theo val WER (patience 3) |
+| Hardware | Kaggle 2× Tesla T4 (16GB) |
+
+Metric: WER và CER. CER quan trọng với tiếng Việt do thanh điệu và dấu phụ. Val WER (~15%) khớp
+test WER (15.81%) → không overfit.
+
+## Phân tích lỗi
+
+So với baseline, model fine-tune cải thiện ở 3 nhóm:
+
+- **Chuẩn hóa số → chữ:** `"2019"` → `"hai nghìn không trăm mười chín"`; `"940 phút"` → `"chín giờ bốn mươi phút"`
+- **Thanh điệu & âm vị** (giảm CER): `"cô hồi"` → `"cơ hội"`; `"toàn phủ hủy"` → `"thành phố huế"`
+- **Từ vay mượn:** `"festival"` → `"phét ti van"` (theo phong cách phiên âm của dataset)
+
+Câu dài nhiều số và tên riêng: WER 47% → 5%.
+
+**Hạn chế:** audio khó (phương ngữ, ca dao) và từ hiếm / tên riêng vẫn sai nhiều. Whisper giới hạn
+30s mỗi lần — audio dài hơn cần cắt đoạn.
+
+## Hướng phát triển
+
+- Shallow fusion với LM (KenLM / n-gram) khi decode.
+- Beam search thay greedy decoding.
+- Fine-tune từ PhoWhisper thay vì Whisper gốc.
+- ONNX / quantization / GPU serving (hiện chạy CPU, ~3–15s/file 10s).
+- Ablation LoRA rank (8 / 16 / 32) và target modules.
+
+## Cấu trúc
 
 ```
 whisper-vi-api/
-├── app.py              # FastAPI server (load model + endpoints /health, /transcribe)
-├── requirements.txt    # dependencies (torch cài riêng — xem mục 6.3)
-├── Dockerfile          # đóng gói production (non-root user, HEALTHCHECK)
+├── app.py            # FastAPI: load model + /health, /transcribe
+├── requirements.txt
+├── Dockerfile        # production: non-root user, HEALTHCHECK
 ├── .dockerignore
 ├── .gitignore
-├── model/              # trọng số model — tải từ Hugging Face, KHÔNG commit
-│   └── README.md       # hướng dẫn tải model
-└── README.md
+└── model/            # trọng số — tải từ Hugging Face, không commit
+    └── README.md
 ```
 
-> Phần **data prep + huấn luyện + đánh giá** nằm trong notebook Kaggle (xem link ở đầu),
-> không nằm trong repo serving này.
+Phần data prep + train + đánh giá nằm trong [notebook Kaggle](https://www.kaggle.com/code/lmminhtrn/train-speedai-22th9).
 
-## 9. Công nghệ sử dụng
+## Stack
 
-Python · PyTorch · Hugging Face Transformers · PEFT (LoRA) · Weights & Biases · FastAPI · Docker · librosa
+Python · PyTorch · Transformers · PEFT · FastAPI · Docker · librosa
